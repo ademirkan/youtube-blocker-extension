@@ -1,0 +1,79 @@
+/* YouTube Doomscroll Blocker - Styles */
+
+#youtube-doomscroll-stats {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  background: rgba(0, 0, 0, 0.8);
+  border-radius: 8px;
+  margin: 8px;
+  font-family: 'Roboto', 'Arial', sans-serif;
+  font-size: 14px;
+  color: #fff;
+  z-index: 10000;
+  position: relative;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.stats-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.stats-label {
+  color: #aaa;
+  font-weight: 400;
+}
+
+.stats-value {
+  color: #fff;
+  font-weight: 600;
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Ensure stats are visible in YouTube header */
+ytd-masthead #youtube-doomscroll-stats,
+#masthead-container #youtube-doomscroll-stats,
+ytd-masthead #container #youtube-doomscroll-stats,
+#masthead-container #container #youtube-doomscroll-stats {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  right: 200px;
+  z-index: 10001;
+}
+
+/* If inserted in body, make it fixed at top */
+body > #youtube-doomscroll-stats {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 10001;
+  margin: 8px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  ytd-masthead #youtube-doomscroll-stats,
+  #masthead-container #youtube-doomscroll-stats {
+    right: 100px;
+    font-size: 12px;
+    gap: 12px;
+  }
+}
+
+@media (max-width: 800px) {
+  #youtube-doomscroll-stats {
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+  
+  .stats-item {
+    gap: 4px;
+  }
+}
