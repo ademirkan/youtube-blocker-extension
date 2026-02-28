@@ -198,50 +198,100 @@
     const video = document.querySelector('video');
     if (!video) return;
 
-    const isShort = isShortPage();
     let startTime = Date.now();
     let wasPlaying = false;
+    let hasBeenCounted = false; // Track if this video has been counted
+    let currentVideoId = null; // Track the current video to avoid double counting
+
+    // Get video ID from URL or video element
+    const getVideoId = () => {
+      // Try to get from URL first
+      const urlMatch = window.location.href.match(/[?&]v=([^&]+)/);
+      if (urlMatch) return urlMatch[1];
+      
+      // Try to get from video element data
+      const videoSrc = video.src || video.currentSrc;
+      if (videoSrc) {
+        const srcMatch = videoSrc.match(/[?&]v=([^&]+)/);
+        if (srcMatch) return srcMatch[1];
+      }
+      
+      // Fallback: use current time as unique identifier
+      return `temp_${Date.now()}`;
+    };
 
     const handlePlay = () => {
       if (!wasPlaying) {
         wasPlaying = true;
         startTime = Date.now();
+        
+        // Check if this is a new video (different from last one)
+        const videoId = getVideoId();
+        if (videoId !== currentVideoId) {
+          currentVideoId = videoId;
+          hasBeenCounted = false;
+        }
+        
+        // Count the video/short when it starts playing (if not already counted)
+        if (!hasBeenCounted) {
+          const isShort = isShortPage();
+          if (isShort) {
+            stats.shorts++;
+          } else {
+            stats.videos++;
+          }
+          hasBeenCounted = true;
+          saveStats();
+          updateStatsDisplay();
+        }
       }
     };
 
     const handlePause = () => {
       if (wasPlaying) {
         const watchTime = Math.floor((Date.now() - startTime) / 1000);
-        stats.totalTime += watchTime;
+        if (watchTime > 0) {
+          stats.totalTime += watchTime;
+          saveStats();
+          updateStatsDisplay();
+        }
         wasPlaying = false;
-        saveStats();
-        updateStatsDisplay();
       }
     };
 
     const handleEnded = () => {
       if (wasPlaying) {
         const watchTime = Math.floor((Date.now() - startTime) / 1000);
-        stats.totalTime += watchTime;
-        wasPlaying = false;
-        
-        if (isShort) {
-          stats.shorts++;
-        } else {
-          stats.videos++;
+        if (watchTime > 0) {
+          stats.totalTime += watchTime;
+          saveStats();
+          updateStatsDisplay();
         }
-        
-        saveStats();
-        updateStatsDisplay();
+        wasPlaying = false;
       }
     };
 
-    // Track when user navigates away
+    // Track when user navigates away or video element is removed
     const handleBeforeUnload = () => {
       if (wasPlaying) {
         const watchTime = Math.floor((Date.now() - startTime) / 1000);
-        stats.totalTime += watchTime;
-        saveStats();
+        if (watchTime > 0) {
+          stats.totalTime += watchTime;
+          saveStats();
+        }
+      }
+    };
+
+    // Also track time on visibility change (tab switch, minimize, etc.)
+    const handleVisibilityChange = () => {
+      if (document.hidden && wasPlaying) {
+        const watchTime = Math.floor((Date.now() - startTime) / 1000);
+        if (watchTime > 0) {
+          stats.totalTime += watchTime;
+          startTime = Date.now(); // Reset for when tab becomes visible again
+          saveStats();
+          updateStatsDisplay();
+        }
       }
     };
 
@@ -249,13 +299,24 @@
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
     window.addEventListener('beforeunload', handleBeforeUnload);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Cleanup function
     return () => {
+      // Save any remaining watch time before cleanup
+      if (wasPlaying) {
+        const watchTime = Math.floor((Date.now() - startTime) / 1000);
+        if (watchTime > 0) {
+          stats.totalTime += watchTime;
+          saveStats();
+        }
+      }
+      
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }
 
