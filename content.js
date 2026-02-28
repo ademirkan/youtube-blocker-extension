@@ -10,6 +10,12 @@
     totalTime: 0 // in seconds
   };
 
+  // Real-time tracking state
+  let currentSessionTime = 0; // Time in current session (seconds)
+  let isPaused = true; // Track if video is currently paused
+  let updateInterval = null; // Interval for real-time updates
+  let lastSaveTime = Date.now(); // Track when we last saved to storage
+
   // Load stats from storage
   chrome.storage.local.get(['youtubeStats'], (result) => {
     if (result.youtubeStats) {
@@ -22,6 +28,21 @@
   function isShortPage() {
     const path = window.location.pathname;
     return path === '/shorts' || path.startsWith('/shorts/');
+  }
+
+  // Format time in HH:MM:SS format (or MM:SS if < 1 hour, or SS if < 1 minute)
+  function formatTime(seconds) {
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    
+    if (hrs > 0) {
+      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    } else if (mins > 0) {
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    } else {
+      return `${String(secs).padStart(2, '0')}s`;
+    }
   }
 
   // Track scroll prevention handlers to avoid duplicates
@@ -183,13 +204,47 @@
     if (videosEl) videosEl.textContent = stats.videos;
     if (shortsEl) shortsEl.textContent = stats.shorts;
     if (timeEl) {
-      const minutes = Math.floor(stats.totalTime / 60);
-      const hours = Math.floor(minutes / 60);
-      if (hours > 0) {
-        timeEl.textContent = `${hours}h ${minutes % 60}m`;
+      // Display total time + current session time
+      const totalSeconds = stats.totalTime + currentSessionTime;
+      timeEl.textContent = formatTime(totalSeconds);
+      
+      // Update pause state styling
+      if (isPaused) {
+        timeEl.classList.add('stats-time-paused');
       } else {
-        timeEl.textContent = `${minutes}m`;
+        timeEl.classList.remove('stats-time-paused');
       }
+    }
+  }
+
+  // Start/stop real-time update interval
+  function startUpdateInterval() {
+    if (updateInterval) return; // Already running
+    
+    updateInterval = setInterval(() => {
+      const video = document.querySelector('video');
+      if (video && !video.paused) {
+        // Video is playing - increment session time
+        currentSessionTime++;
+        updateStatsDisplay();
+        
+        // Periodically save to storage (every 5 seconds)
+        const now = Date.now();
+        if (now - lastSaveTime >= 5000) {
+          // Accumulate current session time into total
+          stats.totalTime += currentSessionTime;
+          currentSessionTime = 0;
+          saveStats();
+          lastSaveTime = now;
+        }
+      }
+    }, 1000); // Update every second
+  }
+
+  function stopUpdateInterval() {
+    if (updateInterval) {
+      clearInterval(updateInterval);
+      updateInterval = null;
     }
   }
 
@@ -198,10 +253,9 @@
     const video = document.querySelector('video');
     if (!video) return;
 
-    let startTime = Date.now();
-    let wasPlaying = false;
     let hasBeenCounted = false; // Track if this video has been counted
     let currentVideoId = null; // Track the current video to avoid double counting
+    let lastPausedState = video.paused;
 
     // Get video ID from URL or video element
     const getVideoId = () => {
@@ -220,103 +274,130 @@
       return `temp_${Date.now()}`;
     };
 
-    const handlePlay = () => {
-      if (!wasPlaying) {
-        wasPlaying = true;
-        startTime = Date.now();
-        
-        // Check if this is a new video (different from last one)
-        const videoId = getVideoId();
-        if (videoId !== currentVideoId) {
-          currentVideoId = videoId;
-          hasBeenCounted = false;
+    // Check video state periodically and update accordingly
+    const checkVideoState = () => {
+      if (!video) return;
+      
+      const currentlyPaused = video.paused;
+      
+      // If state changed, handle it
+      if (currentlyPaused !== lastPausedState) {
+        if (!currentlyPaused) {
+          // Video started playing
+          handlePlay();
+        } else {
+          // Video paused
+          handlePause();
         }
-        
-        // Count the video/short when it starts playing (if not already counted)
-        if (!hasBeenCounted) {
-          const isShort = isShortPage();
-          if (isShort) {
-            stats.shorts++;
-          } else {
-            stats.videos++;
-          }
-          hasBeenCounted = true;
-          saveStats();
-          updateStatsDisplay();
-        }
+        lastPausedState = currentlyPaused;
       }
+      
+      // Update pause state for UI
+      isPaused = currentlyPaused;
+      updateStatsDisplay();
+    };
+
+    const handlePlay = () => {
+      // Check if this is a new video (different from last one)
+      const videoId = getVideoId();
+      if (videoId !== currentVideoId) {
+        // New video - save previous session time if any
+        if (currentSessionTime > 0) {
+          stats.totalTime += currentSessionTime;
+          currentSessionTime = 0;
+        }
+        currentVideoId = videoId;
+        hasBeenCounted = false;
+      }
+      
+      // Count the video/short when it starts playing (if not already counted)
+      if (!hasBeenCounted) {
+        const isShort = isShortPage();
+        if (isShort) {
+          stats.shorts++;
+        } else {
+          stats.videos++;
+        }
+        hasBeenCounted = true;
+        saveStats();
+        updateStatsDisplay();
+      }
+      
+      // Start real-time updates
+      isPaused = false;
+      startUpdateInterval();
     };
 
     const handlePause = () => {
-      if (wasPlaying) {
-        const watchTime = Math.floor((Date.now() - startTime) / 1000);
-        if (watchTime > 0) {
-          stats.totalTime += watchTime;
-          saveStats();
-          updateStatsDisplay();
-        }
-        wasPlaying = false;
+      // Stop real-time updates
+      isPaused = true;
+      stopUpdateInterval();
+      
+      // Accumulate current session time into total
+      if (currentSessionTime > 0) {
+        stats.totalTime += currentSessionTime;
+        currentSessionTime = 0;
+        saveStats();
       }
+      updateStatsDisplay();
     };
 
     const handleEnded = () => {
-      if (wasPlaying) {
-        const watchTime = Math.floor((Date.now() - startTime) / 1000);
-        if (watchTime > 0) {
-          stats.totalTime += watchTime;
-          saveStats();
-          updateStatsDisplay();
-        }
-        wasPlaying = false;
+      // Video ended - accumulate session time and stop updates
+      isPaused = true;
+      stopUpdateInterval();
+      
+      if (currentSessionTime > 0) {
+        stats.totalTime += currentSessionTime;
+        currentSessionTime = 0;
+        saveStats();
       }
+      updateStatsDisplay();
     };
 
     // Track when user navigates away or video element is removed
     const handleBeforeUnload = () => {
-      if (wasPlaying) {
-        const watchTime = Math.floor((Date.now() - startTime) / 1000);
-        if (watchTime > 0) {
-          stats.totalTime += watchTime;
-          saveStats();
-        }
+      // Save any accumulated time
+      if (currentSessionTime > 0) {
+        stats.totalTime += currentSessionTime;
+        currentSessionTime = 0;
+        saveStats();
       }
     };
 
-    // Also track time on visibility change (tab switch, minimize, etc.)
-    const handleVisibilityChange = () => {
-      if (document.hidden && wasPlaying) {
-        const watchTime = Math.floor((Date.now() - startTime) / 1000);
-        if (watchTime > 0) {
-          stats.totalTime += watchTime;
-          startTime = Date.now(); // Reset for when tab becomes visible again
-          saveStats();
-          updateStatsDisplay();
-        }
-      }
-    };
+    // Initialize state
+    if (!video.paused) {
+      handlePlay();
+    } else {
+      isPaused = true;
+      updateStatsDisplay();
+    }
 
+    // Check video state every 500ms to catch play/pause events
+    const stateCheckInterval = setInterval(checkVideoState, 500);
+
+    // Also listen to events for immediate response
     video.addEventListener('play', handlePlay);
     video.addEventListener('pause', handlePause);
     video.addEventListener('ended', handleEnded);
     window.addEventListener('beforeunload', handleBeforeUnload);
-    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Cleanup function
     return () => {
-      // Save any remaining watch time before cleanup
-      if (wasPlaying) {
-        const watchTime = Math.floor((Date.now() - startTime) / 1000);
-        if (watchTime > 0) {
-          stats.totalTime += watchTime;
-          saveStats();
-        }
+      stopUpdateInterval();
+      clearInterval(stateCheckInterval);
+      
+      // Save any remaining session time
+      if (currentSessionTime > 0) {
+        stats.totalTime += currentSessionTime;
+        currentSessionTime = 0;
+        saveStats();
       }
       
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
       window.removeEventListener('beforeunload', handleBeforeUnload);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }
 
@@ -330,7 +411,7 @@
     // Wait for DOM to be ready
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(init, 1000);
+        setTimeout(init, 200);
       });
       return;
     }
@@ -343,20 +424,49 @@
 
     // Track video consumption
     let cleanup = null;
+    let lastVideoElement = null;
+    
+    const checkForVideo = () => {
+      const video = document.querySelector('video');
+      // Only re-track if video element actually changed
+      if (video && video !== lastVideoElement) {
+        if (cleanup) cleanup();
+        lastVideoElement = video;
+        cleanup = trackVideo();
+      } else if (!video && lastVideoElement) {
+        // Video was removed, cleanup
+        if (cleanup) cleanup();
+        cleanup = null;
+        lastVideoElement = null;
+        // Stop update interval and save any remaining session time
+        stopUpdateInterval();
+        if (currentSessionTime > 0) {
+          stats.totalTime += currentSessionTime;
+          currentSessionTime = 0;
+          saveStats();
+        }
+        isPaused = true;
+        updateStatsDisplay();
+      }
+    };
+    
     const observer = new MutationObserver(() => {
-      if (cleanup) cleanup();
-      cleanup = trackVideo();
+      checkForVideo();
     });
 
     observer.observe(document.body, {
       childList: true,
-      subtree: true
+      subtree: true,
+      attributes: false
     });
 
     // Initial tracking
     setTimeout(() => {
-      cleanup = trackVideo();
-    }, 2000);
+      checkForVideo();
+    }, 1000);
+    
+    // Also check periodically for video changes (useful for Shorts auto-advance)
+    setInterval(checkForVideo, 2000);
 
     // Re-disable scrolling when navigating (for SPA)
     let lastUrl = location.href;
@@ -378,8 +488,7 @@
             disableShortsScrolling();
           }
           createStatsDisplay();
-          if (cleanup) cleanup();
-          cleanup = trackVideo();
+          checkForVideo();
         }, 1000);
       }
     }).observe(document, { subtree: true, childList: true });
@@ -393,8 +502,7 @@
           enableScrolling();
         }
         createStatsDisplay();
-        if (cleanup) cleanup();
-        cleanup = trackVideo();
+        checkForVideo();
       }, 500);
     });
   }

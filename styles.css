@@ -33,6 +33,13 @@
   min-width: fit-content;
 }
 
+/* Paused state styling - dimmed/muted appearance */
+.stats-time-paused {
+  opacity: 0.5;
+  color: var(--yt-spec-text-secondary, #aaaaaa) !important;
+  transition: opacity 0.3s ease, color 0.3s ease;
+}
+
 /* Integrate into YouTube header naturally */
 ytd-masthead #youtube-doomscroll-stats,
 #masthead-container #youtube-doomscroll-stats,
