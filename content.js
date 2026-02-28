@@ -3,10 +3,10 @@
 (function() {
   'use strict';
 
-  // Stats tracking
+  // Stats tracking - using hashsets (objects) to track unique videos/shorts
   let stats = {
-    videos: 0,
-    shorts: 0,
+    videos: {},  // Hashset: { videoId1: true, videoId2: true, ... }
+    shorts: {},  // Hashset: { videoId1: true, videoId2: true, ... }
     totalTime: 0 // in seconds
   };
 
@@ -16,10 +16,30 @@
   let updateInterval = null; // Interval for real-time updates
   let lastSaveTime = Date.now(); // Track when we last saved to storage
 
+  // Migration function to convert old counter-based stats to hashset format
+  function migrateStats(oldStats) {
+    if (typeof oldStats.videos === 'number' || typeof oldStats.shorts === 'number') {
+      // Old format detected - convert to new format
+      // Since we can't know which specific videos were watched, we'll just initialize empty hashsets
+      // The counts are lost, but this is a one-time migration
+      return {
+        videos: {},
+        shorts: {},
+        totalTime: oldStats.totalTime || 0
+      };
+    }
+    // Already in new format or missing fields - ensure structure is correct
+    return {
+      videos: oldStats.videos || {},
+      shorts: oldStats.shorts || {},
+      totalTime: oldStats.totalTime || 0
+    };
+  }
+
   // Load stats from storage
   chrome.storage.local.get(['youtubeStats'], (result) => {
     if (result.youtubeStats) {
-      stats = result.youtubeStats;
+      stats = migrateStats(result.youtubeStats);
       updateStatsDisplay();
     }
   });
@@ -28,6 +48,26 @@
   function isShortPage() {
     const path = window.location.pathname;
     return path === '/shorts' || path.startsWith('/shorts/');
+  }
+
+  // Extract video type and ID from current URL
+  function extractVideoInfo() {
+    const href = window.location.href;
+    const path = window.location.pathname;
+    
+    // Check for Shorts
+    const shortsMatch = href.match(/\/shorts\/([^/?&]+)/);
+    if (shortsMatch) {
+      return { type: 'short', id: shortsMatch[1] };
+    }
+    
+    // Check for regular video
+    const videoMatch = href.match(/[?&]v=([^&]+)/);
+    if (videoMatch) {
+      return { type: 'video', id: videoMatch[1] };
+    }
+    
+    return null; // Not a video page
   }
 
   // Format time in HH:MM:SS format (or MM:SS if < 1 hour, or SS if < 1 minute)
@@ -201,8 +241,12 @@
     const shortsEl = document.getElementById('stats-shorts');
     const timeEl = document.getElementById('stats-time');
 
-    if (videosEl) videosEl.textContent = stats.videos;
-    if (shortsEl) shortsEl.textContent = stats.shorts;
+    // Use hashset sizes for counts
+    const videoCount = Object.keys(stats.videos || {}).length;
+    const shortsCount = Object.keys(stats.shorts || {}).length;
+
+    if (videosEl) videosEl.textContent = videoCount;
+    if (shortsEl) shortsEl.textContent = shortsCount;
     if (timeEl) {
       // Display total time + current session time
       const totalSeconds = stats.totalTime + currentSessionTime;
@@ -310,18 +354,8 @@
         hasBeenCounted = false;
       }
       
-      // Count the video/short when it starts playing (if not already counted)
-      if (!hasBeenCounted) {
-        const isShort = isShortPage();
-        if (isShort) {
-          stats.shorts++;
-        } else {
-          stats.videos++;
-        }
-        hasBeenCounted = true;
-        saveStats();
-        updateStatsDisplay();
-      }
+      // Note: Video/short counting is now handled by URL change detection (handleUrlChange)
+      // No need to increment counters here
       
       // Start real-time updates
       isPaused = false;
@@ -406,6 +440,22 @@
     chrome.storage.local.set({ youtubeStats: stats });
   }
 
+  // Handle URL change to track videos/shorts in hashsets
+  function handleUrlChange() {
+    const videoInfo = extractVideoInfo();
+    if (videoInfo) {
+      const { type, id } = videoInfo;
+      const hashsetKey = type + 's'; // 'video' -> 'videos', 'short' -> 'shorts'
+      
+      // Add to hashset if not already present
+      if (!stats[hashsetKey][id]) {
+        stats[hashsetKey][id] = true;
+        saveStats();
+        updateStatsDisplay();
+      }
+    }
+  }
+
   // Initialize on page load
   function init() {
     // Wait for DOM to be ready
@@ -478,6 +528,9 @@
         lastUrl = url;
         lastPath = path;
         
+        // Track video/short in hashset
+        handleUrlChange();
+        
         // Enable scrolling if leaving Shorts, disable if entering
         if (!isShortPage()) {
           enableScrolling();
@@ -495,6 +548,9 @@
     
     // Also listen to popstate for back/forward navigation
     window.addEventListener('popstate', () => {
+      // Track video/short in hashset
+      handleUrlChange();
+      
       setTimeout(() => {
         if (isShortPage()) {
           disableShortsScrolling();
@@ -505,6 +561,9 @@
         checkForVideo();
       }, 500);
     });
+    
+    // Initial check for current page
+    handleUrlChange();
   }
 
   // Start initialization

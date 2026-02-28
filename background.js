@@ -6,8 +6,8 @@ chrome.runtime.onInstalled.addListener(() => {
     if (!result.youtubeStats) {
       chrome.storage.local.set({
         youtubeStats: {
-          videos: 0,
-          shorts: 0,
+          videos: {},  // Hashset: { videoId1: true, videoId2: true, ... }
+          shorts: {},  // Hashset: { videoId1: true, videoId2: true, ... }
           totalTime: 0
         }
       });
