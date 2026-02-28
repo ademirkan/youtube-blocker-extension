@@ -3,47 +3,52 @@
 #youtube-doomscroll-stats {
   display: flex;
   align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
-  background: rgba(0, 0, 0, 0.8);
-  border-radius: 8px;
-  margin: 8px;
+  gap: 12px;
+  padding: 0;
+  margin: 0 8px;
   font-family: 'Roboto', 'Arial', sans-serif;
   font-size: 14px;
-  color: #fff;
-  z-index: 10000;
+  line-height: 36px;
+  color: var(--yt-spec-text-primary, #ffffff);
   position: relative;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  white-space: nowrap;
 }
 
 .stats-item {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  color: var(--yt-spec-text-secondary, #aaaaaa);
 }
 
 .stats-label {
-  color: #aaa;
+  color: var(--yt-spec-text-secondary, #aaaaaa);
   font-weight: 400;
+  font-size: 14px;
 }
 
 .stats-value {
-  color: #fff;
-  font-weight: 600;
-  min-width: 30px;
-  text-align: right;
+  color: var(--yt-spec-text-primary, #ffffff);
+  font-weight: 500;
+  min-width: fit-content;
 }
 
-/* Ensure stats are visible in YouTube header */
+/* Integrate into YouTube header naturally */
 ytd-masthead #youtube-doomscroll-stats,
 #masthead-container #youtube-doomscroll-stats,
 ytd-masthead #container #youtube-doomscroll-stats,
 #masthead-container #container #youtube-doomscroll-stats {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
-  right: 200px;
-  z-index: 10001;
+  position: static;
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0 8px;
+}
+
+/* Ensure it flows with header content */
+#masthead-container #container #youtube-doomscroll-stats,
+ytd-masthead #container #youtube-doomscroll-stats {
+  order: 1;
+  flex-shrink: 0;
 }
 
 /* If inserted in body, make it fixed at top */
@@ -53,27 +58,35 @@ body > #youtube-doomscroll-stats {
   right: 0;
   z-index: 10001;
   margin: 8px;
+  background: var(--yt-spec-base-background, #0f0f0f);
+  padding: 8px 12px;
+  border-radius: 4px;
 }
 
 /* Responsive adjustments */
 @media (max-width: 1200px) {
-  ytd-masthead #youtube-doomscroll-stats,
-  #masthead-container #youtube-doomscroll-stats {
-    right: 100px;
-    font-size: 12px;
-    gap: 12px;
+  #youtube-doomscroll-stats {
+    font-size: 13px;
+    gap: 10px;
+  }
+  
+  .stats-label {
+    font-size: 13px;
   }
 }
 
 @media (max-width: 800px) {
   #youtube-doomscroll-stats {
-    flex-direction: column;
-    gap: 4px;
-    padding: 6px 12px;
-    font-size: 11px;
+    font-size: 12px;
+    gap: 8px;
+    margin: 0 4px;
   }
   
   .stats-item {
-    gap: 4px;
+    gap: 3px;
+  }
+  
+  .stats-label {
+    font-size: 12px;
   }
 }

@@ -120,30 +120,48 @@
       </div>
     `;
 
-    // Try multiple strategies to find the right place in YouTube header
-    const selectors = [
-      'ytd-masthead #container',
-      'ytd-masthead #content',
-      '#masthead-container #container',
-      'ytd-masthead',
-      '#masthead-container'
+    // Try to find the right-side buttons container in YouTube header
+    // YouTube typically has an end-items container or similar for right-side buttons
+    const rightSideSelectors = [
+      '#end',
+      '#buttons',
+      '#end-items',
+      'ytd-masthead #end',
+      '#masthead-container #end',
+      'ytd-masthead #container #end',
+      '#masthead-container #container #end'
     ];
 
     let inserted = false;
-    for (const selector of selectors) {
-      const element = document.querySelector(selector);
-      if (element) {
-        // Try to insert after the logo/search area
-        const searchContainer = element.querySelector('#search-container, ytd-searchbox');
-        if (searchContainer && searchContainer.parentElement) {
-          searchContainer.parentElement.appendChild(statsContainer);
+    
+    // First, try to insert before the right-side buttons (Create, notifications, etc.)
+    for (const selector of rightSideSelectors) {
+      const endContainer = document.querySelector(selector);
+      if (endContainer && endContainer.parentElement) {
+        // Insert before the end container so stats appear before Create button
+        endContainer.parentElement.insertBefore(statsContainer, endContainer);
+        inserted = true;
+        break;
+      }
+    }
+
+    // If that didn't work, try to find the main container and insert appropriately
+    if (!inserted) {
+      const mainContainer = document.querySelector('ytd-masthead #container, #masthead-container #container');
+      if (mainContainer) {
+        // Try to find search container and insert after it
+        const searchContainer = mainContainer.querySelector('#search-container, ytd-searchbox');
+        if (searchContainer && searchContainer.nextSibling) {
+          mainContainer.insertBefore(statsContainer, searchContainer.nextSibling);
           inserted = true;
-          break;
+        } else if (searchContainer) {
+          // Insert after search container
+          searchContainer.parentElement.insertBefore(statsContainer, searchContainer.nextSibling);
+          inserted = true;
         } else {
-          // Fallback: append to the element
-          element.appendChild(statsContainer);
+          // Append to container
+          mainContainer.appendChild(statsContainer);
           inserted = true;
-          break;
         }
       }
     }
