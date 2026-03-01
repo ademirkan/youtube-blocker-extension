@@ -27,6 +27,25 @@
   font-size: 14px;
 }
 
+.stats-icon-container {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.stats-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  display: block;
+  /* Normalize SVG color to match YouTube's primary text color */
+  color: var(--yt-spec-text-primary, #ffffff);
+  opacity: 0.9;
+}
+
 .stats-value {
   color: var(--yt-spec-text-primary, #ffffff);
   font-weight: 500;
@@ -80,6 +99,12 @@ body > #youtube-doomscroll-stats {
   .stats-label {
     font-size: 13px;
   }
+  
+  .stats-icon-container,
+  .stats-icon {
+    width: 14px;
+    height: 14px;
+  }
 }
 
 @media (max-width: 800px) {
@@ -95,5 +120,11 @@ body > #youtube-doomscroll-stats {
   
   .stats-label {
     font-size: 12px;
+  }
+  
+  .stats-icon-container,
+  .stats-icon {
+    width: 12px;
+    height: 12px;
   }
 }
