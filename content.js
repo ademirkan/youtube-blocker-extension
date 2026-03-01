@@ -16,6 +16,12 @@
   let updateInterval = null; // Interval for real-time updates
   let lastSaveTime = Date.now(); // Track when we last saved to storage
 
+  // Session tracking state
+  const SESSION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+  let sessionSavedTime = 0;    // session seconds flushed to storage
+  let sessionCurrentTime = 0;  // session seconds accumulated in-flight
+  let lastActivityTime = null; // timestamp (ms) of last video play event
+
   // Migration function to convert old counter-based stats to hashset format
   function migrateStats(oldStats) {
     if (typeof oldStats.videos === 'number' || typeof oldStats.shorts === 'number') {
@@ -34,6 +40,48 @@
       shorts: oldStats.shorts || {},
       totalTime: oldStats.totalTime || 0
     };
+  }
+
+  // Load session state from storage, expiring if cooldown has elapsed
+  function loadSessionState() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['sessionState'], (result) => {
+        const stored = result.sessionState;
+        if (stored && stored.lastActivityTime) {
+          const elapsed = Date.now() - stored.lastActivityTime;
+          if (elapsed < SESSION_COOLDOWN_MS) {
+            sessionSavedTime = stored.accumulatedTime || 0;
+            lastActivityTime = stored.lastActivityTime;
+          } else {
+            // Session expired while away — start fresh
+            sessionSavedTime = 0;
+            lastActivityTime = null;
+            chrome.storage.local.set({ sessionState: { accumulatedTime: 0, lastActivityTime: null } });
+          }
+        }
+        resolve();
+      });
+    });
+  }
+
+  function saveSessionState() {
+    chrome.storage.local.set({
+      sessionState: {
+        accumulatedTime: sessionSavedTime,
+        lastActivityTime: lastActivityTime
+      }
+    });
+  }
+
+  // Called periodically to expire a session when the tab stays open but user stops watching
+  function checkSessionExpiry() {
+    if (lastActivityTime && Date.now() - lastActivityTime > SESSION_COOLDOWN_MS) {
+      sessionSavedTime = 0;
+      sessionCurrentTime = 0;
+      lastActivityTime = null;
+      saveSessionState();
+      updateStatsDisplay();
+    }
   }
 
   // Check for daily reset (called from content script)
@@ -58,11 +106,15 @@
             totalTime: 0
           };
           currentSessionTime = 0;
-          
+          sessionSavedTime = 0;
+          sessionCurrentTime = 0;
+          lastActivityTime = null;
+
           // Update storage
           chrome.storage.local.set({
             youtubeStats: stats,
-            lastResetDate: currentDate
+            lastResetDate: currentDate,
+            sessionState: { accumulatedTime: 0, lastActivityTime: null }
           });
           
           // Update display
@@ -106,19 +158,14 @@
     return null; // Not a video page
   }
 
-  // Format time in HH:MM:SS format (or MM:SS if < 1 hour, or SS if < 1 minute)
   function formatTime(seconds) {
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = seconds % 60;
-    
-    if (hrs > 0) {
-      return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    } else if (mins > 0) {
-      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-    } else {
-      return `${String(secs).padStart(2, '0')}s`;
-    }
+
+    if (hrs >= 1)  return `${hrs}h${String(mins).padStart(2, '0')}m`;
+    if (mins >= 1) return `${mins}m`;
+    return `${secs}s`;
   }
 
   // Track scroll prevention handlers to avoid duplicates
@@ -272,17 +319,25 @@
     };
     
     statsContainer.innerHTML = `
-      <div class="stats-item">
-        <span class="stats-icon-container" id="icon-container-videos"></span>
-        <span class="stats-value" id="stats-videos">0</span>
+      <div class="stats-col">
+        <div class="stats-item">
+          <span class="stats-icon-container" id="icon-container-videos"></span>
+          <span class="stats-value" id="stats-videos">0</span>
+        </div>
+        <div class="stats-item">
+          <span class="stats-icon-container" id="icon-container-shorts"></span>
+          <span class="stats-value" id="stats-shorts">0</span>
+        </div>
       </div>
-      <div class="stats-item">
-        <span class="stats-icon-container" id="icon-container-shorts"></span>
-        <span class="stats-value" id="stats-shorts">0</span>
-      </div>
-      <div class="stats-item">
-        <span class="stats-label">Time:</span>
-        <span class="stats-value" id="stats-time">0m</span>
+      <div class="stats-col stats-col--times">
+        <div class="stats-item">
+          <span class="stats-label">Session</span>
+          <span class="stats-value" id="stats-session">0s</span>
+        </div>
+        <div class="stats-item">
+          <span class="stats-label">Today</span>
+          <span class="stats-value" id="stats-time">0s</span>
+        </div>
       </div>
     `;
     
@@ -364,6 +419,7 @@
     const videosEl = document.getElementById('stats-videos');
     const shortsEl = document.getElementById('stats-shorts');
     const timeEl = document.getElementById('stats-time');
+    const sessionEl = document.getElementById('stats-session');
 
     // Use hashset sizes for counts
     const videoCount = Object.keys(stats.videos || {}).length;
@@ -371,17 +427,17 @@
 
     if (videosEl) videosEl.textContent = videoCount;
     if (shortsEl) shortsEl.textContent = shortsCount;
+
     if (timeEl) {
-      // Display total time + current session time
       const totalSeconds = stats.totalTime + currentSessionTime;
       timeEl.textContent = formatTime(totalSeconds);
-      
-      // Update pause state styling
-      if (isPaused) {
-        timeEl.classList.add('stats-time-paused');
-      } else {
-        timeEl.classList.remove('stats-time-paused');
-      }
+      timeEl.classList.toggle('stats-time-paused', isPaused);
+    }
+
+    if (sessionEl) {
+      const totalSessionSeconds = sessionSavedTime + sessionCurrentTime;
+      sessionEl.textContent = formatTime(totalSessionSeconds);
+      sessionEl.classList.toggle('stats-time-paused', isPaused);
     }
   }
 
@@ -392,17 +448,21 @@
     updateInterval = setInterval(() => {
       const video = document.querySelector('video');
       if (video && !video.paused) {
-        // Video is playing - increment session time
+        // Video is playing - increment time counters
         currentSessionTime++;
+        sessionCurrentTime++;
+        lastActivityTime = Date.now(); // keep refreshing while actively watching
         updateStatsDisplay();
-        
+
         // Periodically save to storage (every 5 seconds)
         const now = Date.now();
         if (now - lastSaveTime >= 5000) {
-          // Accumulate current session time into total
           stats.totalTime += currentSessionTime;
           currentSessionTime = 0;
+          sessionSavedTime += sessionCurrentTime;
+          sessionCurrentTime = 0;
           saveStats();
+          saveSessionState();
           lastSaveTime = now;
         }
       }
@@ -466,6 +526,15 @@
     };
 
     const handlePlay = () => {
+      // Check if this starts a new session
+      const now = Date.now();
+      if (!lastActivityTime || (now - lastActivityTime > SESSION_COOLDOWN_MS)) {
+        sessionSavedTime = 0;
+        sessionCurrentTime = 0;
+        saveSessionState();
+      }
+      lastActivityTime = now;
+
       // Check if this is a new video (different from last one)
       const videoId = getVideoId();
       if (videoId !== currentVideoId) {
@@ -477,10 +546,10 @@
         currentVideoId = videoId;
         hasBeenCounted = false;
       }
-      
+
       // Note: Video/short counting is now handled by URL change detection (handleUrlChange)
       // No need to increment counters here
-      
+
       // Start real-time updates
       isPaused = false;
       startUpdateInterval();
@@ -490,13 +559,18 @@
       // Stop real-time updates
       isPaused = true;
       stopUpdateInterval();
-      
+
       // Accumulate current session time into total
       if (currentSessionTime > 0) {
         stats.totalTime += currentSessionTime;
         currentSessionTime = 0;
-        saveStats();
       }
+      if (sessionCurrentTime > 0) {
+        sessionSavedTime += sessionCurrentTime;
+        sessionCurrentTime = 0;
+      }
+      saveStats();
+      saveSessionState();
       updateStatsDisplay();
     };
 
@@ -504,23 +578,32 @@
       // Video ended - accumulate session time and stop updates
       isPaused = true;
       stopUpdateInterval();
-      
+
       if (currentSessionTime > 0) {
         stats.totalTime += currentSessionTime;
         currentSessionTime = 0;
-        saveStats();
       }
+      if (sessionCurrentTime > 0) {
+        sessionSavedTime += sessionCurrentTime;
+        sessionCurrentTime = 0;
+      }
+      saveStats();
+      saveSessionState();
       updateStatsDisplay();
     };
 
     // Track when user navigates away or video element is removed
     const handleBeforeUnload = () => {
-      // Save any accumulated time
       if (currentSessionTime > 0) {
         stats.totalTime += currentSessionTime;
         currentSessionTime = 0;
-        saveStats();
       }
+      if (sessionCurrentTime > 0) {
+        sessionSavedTime += sessionCurrentTime;
+        sessionCurrentTime = 0;
+      }
+      saveStats();
+      saveSessionState();
     };
 
     // Initialize state
@@ -544,14 +627,18 @@
     return () => {
       stopUpdateInterval();
       clearInterval(stateCheckInterval);
-      
-      // Save any remaining session time
+
       if (currentSessionTime > 0) {
         stats.totalTime += currentSessionTime;
         currentSessionTime = 0;
-        saveStats();
       }
-      
+      if (sessionCurrentTime > 0) {
+        sessionSavedTime += sessionCurrentTime;
+        sessionCurrentTime = 0;
+      }
+      saveStats();
+      saveSessionState();
+
       video.removeEventListener('play', handlePlay);
       video.removeEventListener('pause', handlePause);
       video.removeEventListener('ended', handleEnded);
@@ -645,6 +732,9 @@
     // Check for daily reset periodically (every hour)
     setInterval(checkForDailyReset, 60 * 60 * 1000); // 1 hour
 
+    // Check for session expiry every minute (handles open tab, stopped watching)
+    setInterval(checkSessionExpiry, 60 * 1000);
+
     // Re-disable scrolling when navigating (for SPA)
     let lastUrl = location.href;
     let lastPath = location.pathname;
@@ -693,8 +783,10 @@
     handleUrlChange();
   }
 
-  // Start initialization after stats are loaded
+  // Start initialization after stats and session state are loaded
   checkForDailyReset().then(() => {
+    return loadSessionState();
+  }).then(() => {
     init();
   });
 })();

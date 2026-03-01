@@ -3,28 +3,38 @@
 #youtube-doomscroll-stats {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
   padding: 0;
   margin: 0 8px;
   font-family: 'Roboto', 'Arial', sans-serif;
-  font-size: 14px;
-  line-height: 36px;
-  color: var(--yt-spec-text-primary, #ffffff);
-  position: relative;
   white-space: nowrap;
+}
+
+/* Two-column layout: each column stacks its two items vertically */
+.stats-col {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+}
+
+.stats-col--times {
+  padding-left: 8px;
+  border-left: 1px solid var(--yt-spec-text-disabled, rgba(255,255,255,0.15));
 }
 
 .stats-item {
   display: flex;
   align-items: center;
-  gap: 4px;
-  color: var(--yt-spec-text-secondary, #aaaaaa);
+  gap: 3px;
+  line-height: 1;
 }
 
 .stats-label {
   color: var(--yt-spec-text-secondary, #aaaaaa);
   font-weight: 400;
-  font-size: 14px;
+  font-size: 13px;
+  min-width: 48px; /* align values in right column */
 }
 
 .stats-icon-container {
@@ -41,7 +51,6 @@
   height: 16px;
   flex-shrink: 0;
   display: block;
-  /* Normalize SVG color to match YouTube's primary text color */
   color: var(--yt-spec-text-primary, #ffffff);
   opacity: 0.9;
 }
@@ -49,6 +58,7 @@
 .stats-value {
   color: var(--yt-spec-text-primary, #ffffff);
   font-weight: 500;
+  font-size: 14px;
   min-width: fit-content;
 }
 
@@ -92,39 +102,47 @@ body > #youtube-doomscroll-stats {
 /* Responsive adjustments */
 @media (max-width: 1200px) {
   #youtube-doomscroll-stats {
-    font-size: 13px;
-    gap: 10px;
+    gap: 6px;
   }
-  
+
   .stats-label {
-    font-size: 13px;
+    font-size: 9px;
+    min-width: 34px;
   }
-  
+
+  .stats-value {
+    font-size: 10px;
+  }
+
   .stats-icon-container,
   .stats-icon {
-    width: 14px;
-    height: 14px;
+    width: 11px;
+    height: 11px;
   }
 }
 
 @media (max-width: 800px) {
   #youtube-doomscroll-stats {
-    font-size: 12px;
-    gap: 8px;
+    gap: 4px;
     margin: 0 4px;
   }
-  
-  .stats-item {
-    gap: 3px;
+
+  .stats-col--times {
+    padding-left: 4px;
   }
-  
+
   .stats-label {
-    font-size: 12px;
+    font-size: 9px;
+    min-width: 30px;
   }
-  
+
+  .stats-value {
+    font-size: 10px;
+  }
+
   .stats-icon-container,
   .stats-icon {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
   }
 }

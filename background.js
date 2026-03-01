@@ -14,6 +14,22 @@ function getNext3AM() {
   return next3AM.getTime();
 }
 
+const SESSION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+
+// Expire session if cooldown has elapsed since last activity
+function checkAndExpireSession() {
+  chrome.storage.local.get(['sessionState'], (result) => {
+    const stored = result.sessionState;
+    if (stored && stored.lastActivityTime) {
+      if (Date.now() - stored.lastActivityTime > SESSION_COOLDOWN_MS) {
+        chrome.storage.local.set({
+          sessionState: { accumulatedTime: 0, lastActivityTime: null }
+        });
+      }
+    }
+  });
+}
+
 // Check and reset stats daily at 3 AM
 function checkAndResetDaily() {
   const now = new Date();
@@ -59,6 +75,13 @@ chrome.runtime.onInstalled.addListener(() => {
         lastResetDate: new Date().toDateString()
       });
     }
+
+    // Initialize sessionState if not set
+    if (!result.sessionState) {
+      chrome.storage.local.set({
+        sessionState: { accumulatedTime: 0, lastActivityTime: null }
+      });
+    }
     
     // Check for reset on install
     checkAndResetDaily();
@@ -73,6 +96,7 @@ chrome.runtime.onInstalled.addListener(() => {
 // Check for reset on browser startup
 chrome.runtime.onStartup.addListener(() => {
   checkAndResetDaily();
+  checkAndExpireSession();
 });
 
 // Handle alarm events
