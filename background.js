@@ -1,8 +1,48 @@
 // YouTube Doomscroll Blocker - Background Service Worker
 
+// Helper function to get next 3 AM timestamp
+function getNext3AM() {
+  const now = new Date();
+  const next3AM = new Date();
+  next3AM.setHours(3, 0, 0, 0);
+  
+  // If it's already past 3 AM today, set for tomorrow
+  if (now.getHours() >= 3) {
+    next3AM.setDate(next3AM.getDate() + 1);
+  }
+  
+  return next3AM.getTime();
+}
+
+// Check and reset stats daily at 3 AM
+function checkAndResetDaily() {
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentDate = now.toDateString(); // e.g., "Mon Jan 01 2024"
+  
+  chrome.storage.local.get(['lastResetDate', 'youtubeStats'], (result) => {
+    const lastResetDate = result.lastResetDate;
+    const shouldReset = 
+      currentHour >= 3 && // Past 3 AM
+      lastResetDate !== currentDate; // Different day
+    
+    if (shouldReset) {
+      chrome.storage.local.set({
+        youtubeStats: {
+          videos: {},
+          shorts: {},
+          totalTime: 0
+        },
+        lastResetDate: currentDate
+      });
+      console.log('[YouTube Blocker] Daily reset completed at 3 AM');
+    }
+  });
+}
+
 // Initialize storage on install
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(['youtubeStats'], (result) => {
+  chrome.storage.local.get(['youtubeStats', 'lastResetDate'], (result) => {
     if (!result.youtubeStats) {
       chrome.storage.local.set({
         youtubeStats: {
@@ -12,7 +52,32 @@ chrome.runtime.onInstalled.addListener(() => {
         }
       });
     }
+    
+    // Initialize lastResetDate if not set
+    if (!result.lastResetDate) {
+      chrome.storage.local.set({
+        lastResetDate: new Date().toDateString()
+      });
+    }
+    
+    // Check for reset on install
+    checkAndResetDaily();
+    
+    // Set up alarm to check every hour
+    chrome.alarms.create('hourlyResetCheck', {
+      periodInMinutes: 60
+    });
   });
 });
 
-// Optional: Add context menu or other background features here
+// Check for reset on browser startup
+chrome.runtime.onStartup.addListener(() => {
+  checkAndResetDaily();
+});
+
+// Handle alarm events
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'hourlyResetCheck') {
+    checkAndResetDaily();
+  }
+});

@@ -5,7 +5,8 @@
   "description": "Prevent YouTube Shorts scrolling and track your consumption stats",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "alarms"
   ],
   "host_permissions": [
     "https://www.youtube.com/*"

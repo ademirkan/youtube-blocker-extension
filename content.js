@@ -36,13 +36,46 @@
     };
   }
 
-  // Load stats from storage
-  chrome.storage.local.get(['youtubeStats'], (result) => {
-    if (result.youtubeStats) {
-      stats = migrateStats(result.youtubeStats);
-      updateStatsDisplay();
-    }
-  });
+  // Check for daily reset (called from content script)
+  function checkForDailyReset() {
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentDate = now.toDateString();
+    
+    chrome.storage.local.get(['lastResetDate', 'youtubeStats'], (result) => {
+      const lastResetDate = result.lastResetDate;
+      const shouldReset = 
+        currentHour >= 3 && // Past 3 AM
+        lastResetDate !== currentDate; // Different day
+      
+      if (shouldReset) {
+        // Reset stats
+        stats = {
+          videos: {},
+          shorts: {},
+          totalTime: 0
+        };
+        currentSessionTime = 0;
+        
+        // Update storage
+        chrome.storage.local.set({
+          youtubeStats: stats,
+          lastResetDate: currentDate
+        });
+        
+        // Update display
+        updateStatsDisplay();
+        console.log('[YouTube Blocker] Daily reset completed at 3 AM');
+      } else if (result.youtubeStats) {
+        // Load stats normally if no reset needed
+        stats = migrateStats(result.youtubeStats);
+        updateStatsDisplay();
+      }
+    });
+  }
+
+  // Load stats from storage and check for reset
+  checkForDailyReset();
 
   // Check if current page is a Short
   function isShortPage() {
@@ -517,6 +550,9 @@
     
     // Also check periodically for video changes (useful for Shorts auto-advance)
     setInterval(checkForVideo, 2000);
+
+    // Check for daily reset periodically (every hour)
+    setInterval(checkForDailyReset, 60 * 60 * 1000); // 1 hour
 
     // Re-disable scrolling when navigating (for SPA)
     let lastUrl = location.href;
