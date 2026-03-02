@@ -1,6 +1,7 @@
-/* YouTube Doomscroll Blocker - Styles */
+/* Doomscroll Blocker — Base Widget Styles
+   Site-agnostic. Works with any adapter's header anchor. */
 
-#youtube-doomscroll-stats {
+#dsb-stats-widget {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -20,7 +21,7 @@
 
 .stats-col--times {
   padding-left: 8px;
-  border-left: 1px solid var(--yt-spec-text-disabled, rgba(255,255,255,0.15));
+  border-left: 1px solid var(--yt-spec-text-disabled, rgba(255, 255, 255, 0.15));
 }
 
 .stats-item {
@@ -34,7 +35,7 @@
   color: var(--yt-spec-text-secondary, #aaaaaa);
   font-weight: 400;
   font-size: 13px;
-  min-width: 48px; /* align values in right column */
+  min-width: 48px;
 }
 
 .stats-icon-container {
@@ -62,33 +63,15 @@
   min-width: fit-content;
 }
 
-/* Paused state styling - dimmed/muted appearance */
+/* Paused state — dimmed/muted appearance */
 .stats-time-paused {
   opacity: 0.5;
   color: var(--yt-spec-text-secondary, #aaaaaa) !important;
   transition: opacity 0.3s ease, color 0.3s ease;
 }
 
-/* Integrate into YouTube header naturally */
-ytd-masthead #youtube-doomscroll-stats,
-#masthead-container #youtube-doomscroll-stats,
-ytd-masthead #container #youtube-doomscroll-stats,
-#masthead-container #container #youtube-doomscroll-stats {
-  position: static;
-  display: inline-flex;
-  vertical-align: middle;
-  margin: 0 8px;
-}
-
-/* Ensure it flows with header content */
-#masthead-container #container #youtube-doomscroll-stats,
-ytd-masthead #container #youtube-doomscroll-stats {
-  order: 1;
-  flex-shrink: 0;
-}
-
-/* If inserted in body, make it fixed at top */
-body > #youtube-doomscroll-stats {
+/* Fallback: if inserted directly in body, render as fixed overlay */
+body > #dsb-stats-widget {
   position: fixed;
   top: 0;
   right: 0;
@@ -101,7 +84,7 @@ body > #youtube-doomscroll-stats {
 
 /* Responsive adjustments */
 @media (max-width: 1200px) {
-  #youtube-doomscroll-stats {
+  #dsb-stats-widget {
     gap: 6px;
   }
 
@@ -122,7 +105,7 @@ body > #youtube-doomscroll-stats {
 }
 
 @media (max-width: 800px) {
-  #youtube-doomscroll-stats {
+  #dsb-stats-widget {
     gap: 4px;
     margin: 0 4px;
   }

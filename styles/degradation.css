@@ -1,0 +1,41 @@
+/* Doomscroll Blocker — Degradation CSS
+   Rules are keyed on the data-dsb-level attribute set on <html> by the degradation engine.
+   Levels are cumulative: each higher level repeats all lower-level rules.
+   Site-specific selectors live here alongside generic ones. */
+
+/* ── YouTube ──────────────────────────────────────────────────────────────── */
+
+/* Level 1 (30 min): Shorts shelf hidden from home feed */
+[data-dsb-level="youtube-hide-shorts"] ytd-reel-shelf-renderer,
+[data-dsb-level="youtube-hide-shorts"] ytd-rich-item-renderer[is-slim-media] {
+  display: none !important;
+}
+
+/* Level 2 (60 min): Level 1 + sidebar recommendations gone */
+[data-dsb-level="youtube-hide-sidebar"] ytd-reel-shelf-renderer,
+[data-dsb-level="youtube-hide-sidebar"] ytd-rich-item-renderer[is-slim-media],
+[data-dsb-level="youtube-hide-sidebar"] #secondary {
+  display: none !important;
+}
+
+/* Level 3 (120 min): Level 2 + no home feed recommendations */
+[data-dsb-level="youtube-hide-recommendations"] ytd-reel-shelf-renderer,
+[data-dsb-level="youtube-hide-recommendations"] ytd-rich-item-renderer[is-slim-media],
+[data-dsb-level="youtube-hide-recommendations"] #secondary,
+[data-dsb-level="youtube-hide-recommendations"] ytd-rich-grid-renderer {
+  display: none !important;
+}
+
+/* ── TikTok (Phase 2) ────────────────────────────────────────────────────── */
+
+/* Level 1: hide For You feed tab */
+[data-dsb-level="tiktok-hide-for-you"] [data-e2e="for-you-tab"] {
+  display: none !important;
+}
+
+/* ── Reddit (Phase 4) ────────────────────────────────────────────────────── */
+
+/* Level 1: hide promoted posts */
+[data-dsb-level="reddit-hide-promoted"] [data-testid="promoted-post"] {
+  display: none !important;
+}

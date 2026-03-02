@@ -1,11 +1,10 @@
 {
   "manifest_version": 3,
-  "name": "YouTube Doomscroll Blocker",
-  "version": "1.0.0",
-  "description": "Prevent YouTube Shorts scrolling and track your consumption stats",
+  "name": "Doomscroll Blocker",
+  "version": "2.0.0",
+  "description": "Block doomscrolling on YouTube and track your consumption stats",
   "permissions": [
     "storage",
-    "activeTab",
     "alarms"
   ],
   "host_permissions": [
@@ -14,8 +13,27 @@
   "content_scripts": [
     {
       "matches": ["https://www.youtube.com/*"],
-      "js": ["content.js"],
-      "css": ["styles.css"],
+      "js": ["core/test-bridge.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["https://www.youtube.com/*"],
+      "js": [
+        "core/storage.js",
+        "core/time-tracker.js",
+        "core/degradation-engine.js",
+        "core/blocking-engine.js",
+        "core/stats-widget.js",
+        "core/sync-client.js",
+        "adapters/youtube.js",
+        "core/content-main.js"
+      ],
+      "css": [
+        "styles/base.css",
+        "styles/degradation.css",
+        "styles/youtube.css"
+      ],
       "run_at": "document_start"
     }
   ],

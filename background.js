@@ -1,107 +1,132 @@
-// YouTube Doomscroll Blocker - Background Service Worker
-
-// Helper function to get next 3 AM timestamp
-function getNext3AM() {
-  const now = new Date();
-  const next3AM = new Date();
-  next3AM.setHours(3, 0, 0, 0);
-  
-  // If it's already past 3 AM today, set for tomorrow
-  if (now.getHours() >= 3) {
-    next3AM.setDate(next3AM.getDate() + 1);
-  }
-  
-  return next3AM.getTime();
-}
+// Doomscroll Blocker — Background Service Worker
+// Handles daily reset scheduling and session expiry across all tracked sites.
 
 const SESSION_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 
-// Expire session if cooldown has elapsed since last activity
-function checkAndExpireSession() {
-  chrome.storage.local.get(['sessionState'], (result) => {
-    const stored = result.sessionState;
-    if (stored && stored.lastActivityTime) {
-      if (Date.now() - stored.lastActivityTime > SESSION_COOLDOWN_MS) {
-        chrome.storage.local.set({
-          sessionState: { accumulatedTime: 0, lastActivityTime: null }
-        });
-      }
-    }
-  });
-}
+// All sites whose stats are managed. Extend this list when adding new adapters.
+const TRACKED_SITES = [
+  { siteId: 'youtube', storageKey: 'youtubeStats' },
+];
 
-// Check and reset stats daily at 3 AM
+// ── Daily reset ───────────────────────────────────────────────────────────
+
 function checkAndResetDaily() {
   const now = new Date();
   const currentHour = now.getHours();
-  const currentDate = now.toDateString(); // e.g., "Mon Jan 01 2024"
-  
-  chrome.storage.local.get(['lastResetDate', 'youtubeStats'], (result) => {
-    const lastResetDate = result.lastResetDate;
-    const shouldReset = 
-      currentHour >= 3 && // Past 3 AM
-      lastResetDate !== currentDate; // Different day
-    
-    if (shouldReset) {
-      chrome.storage.local.set({
-        youtubeStats: {
-          videos: {},
-          shorts: {},
-          totalTime: 0
-        },
-        lastResetDate: currentDate
-      });
-      console.log('[YouTube Blocker] Daily reset completed at 3 AM');
+  const currentDate = now.toDateString();
+
+  if (currentHour < 3) return; // Not yet 3 AM
+
+  const keys = ['lastResetDates', ...TRACKED_SITES.map(s => s.storageKey)];
+  chrome.storage.local.get(keys, (result) => {
+    const lastResetDates = result.lastResetDates || {};
+    const updates = {};
+    let needsUpdate = false;
+
+    for (const site of TRACKED_SITES) {
+      if (lastResetDates[site.siteId] !== currentDate) {
+        updates[site.storageKey] = { videos: {}, shorts: {}, totalTime: 0 };
+        lastResetDates[site.siteId] = currentDate;
+        needsUpdate = true;
+        console.log(`[Doomscroll Blocker] Daily reset: ${site.siteId}`);
+      }
+    }
+
+    if (needsUpdate) {
+      updates.lastResetDates = lastResetDates;
+      chrome.storage.local.set(updates);
     }
   });
 }
 
-// Initialize storage on install
-chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(['youtubeStats', 'lastResetDate'], (result) => {
-    if (!result.youtubeStats) {
-      chrome.storage.local.set({
-        youtubeStats: {
-          videos: {},  // Hashset: { videoId1: true, videoId2: true, ... }
-          shorts: {},  // Hashset: { videoId1: true, videoId2: true, ... }
-          totalTime: 0
-        }
-      });
-    }
-    
-    // Initialize lastResetDate if not set
-    if (!result.lastResetDate) {
-      chrome.storage.local.set({
-        lastResetDate: new Date().toDateString()
-      });
+// ── Session expiry ────────────────────────────────────────────────────────
+
+function checkAndExpireSessions() {
+  chrome.storage.local.get(['sessions'], (result) => {
+    const sessions = result.sessions || {};
+    let changed = false;
+
+    for (const siteId of Object.keys(sessions)) {
+      const s = sessions[siteId];
+      if (s && s.lastActivityTime && Date.now() - s.lastActivityTime > SESSION_COOLDOWN_MS) {
+        sessions[siteId] = { accumulatedTime: 0, lastActivityTime: null };
+        changed = true;
+      }
     }
 
-    // Initialize sessionState if not set
-    if (!result.sessionState) {
-      chrome.storage.local.set({
-        sessionState: { accumulatedTime: 0, lastActivityTime: null }
-      });
-    }
-    
-    // Check for reset on install
-    checkAndResetDaily();
-    
-    // Set up alarm to check every hour
-    chrome.alarms.create('hourlyResetCheck', {
-      periodInMinutes: 60
-    });
+    if (changed) chrome.storage.local.set({ sessions });
   });
+}
+
+// ── Migration: old flat keys → new nested schema ──────────────────────────
+
+function migrateStorage() {
+  chrome.storage.local.get(
+    ['lastResetDate', 'sessionState', 'lastResetDates', 'sessions'],
+    (result) => {
+      const updates = {};
+
+      if (result.lastResetDate && !result.lastResetDates) {
+        updates.lastResetDates = { youtube: result.lastResetDate };
+      }
+
+      if (result.sessionState && !result.sessions) {
+        updates.sessions = { youtube: result.sessionState };
+      }
+
+      if (Object.keys(updates).length > 0) {
+        chrome.storage.local.set(updates);
+        console.log('[Doomscroll Blocker] Migrated storage to v2 schema');
+      }
+    }
+  );
+}
+
+// ── Lifecycle hooks ───────────────────────────────────────────────────────
+
+chrome.runtime.onInstalled.addListener((details) => {
+  if (details.reason === 'update') {
+    migrateStorage();
+  }
+
+  chrome.storage.local.get(
+    ['lastResetDates', ...TRACKED_SITES.map(s => s.storageKey)],
+    (result) => {
+      const updates = {};
+
+      for (const site of TRACKED_SITES) {
+        if (!result[site.storageKey]) {
+          updates[site.storageKey] = { videos: {}, shorts: {}, totalTime: 0 };
+        }
+      }
+
+      if (!result.lastResetDates) {
+        const dates = {};
+        for (const site of TRACKED_SITES) {
+          dates[site.siteId] = new Date().toDateString();
+        }
+        updates.lastResetDates = dates;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        chrome.storage.local.set(updates);
+      }
+    }
+  );
+
+  checkAndResetDaily();
+
+  chrome.alarms.create('hourlyCheck', { periodInMinutes: 60 });
 });
 
-// Check for reset on browser startup
 chrome.runtime.onStartup.addListener(() => {
   checkAndResetDaily();
-  checkAndExpireSession();
+  checkAndExpireSessions();
 });
 
-// Handle alarm events
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'hourlyResetCheck') {
+  if (alarm.name === 'hourlyCheck') {
     checkAndResetDaily();
+    checkAndExpireSessions();
   }
 });

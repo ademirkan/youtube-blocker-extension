@@ -1,0 +1,19 @@
+/* Doomscroll Blocker — YouTube-specific Widget Overrides
+   Header integration — ensures the widget flows naturally with YouTube's layout. */
+
+ytd-masthead #dsb-stats-widget,
+#masthead-container #dsb-stats-widget,
+ytd-masthead #container #dsb-stats-widget,
+#masthead-container #container #dsb-stats-widget {
+  position: static;
+  display: inline-flex;
+  vertical-align: middle;
+  margin: 0 8px;
+}
+
+/* Ensure it flows with header flex/grid content */
+#masthead-container #container #dsb-stats-widget,
+ytd-masthead #container #dsb-stats-widget {
+  order: 1;
+  flex-shrink: 0;
+}
